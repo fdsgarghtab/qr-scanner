@@ -109,10 +109,9 @@
 </div>
 
 <script>
-    // ⚠️ ЗАМЕНИТЕ НА ВАШ URL ВЕБ-ПРИЛОЖЕНИЯ
-    const API_URL = 'https://script.google.com/macros/s/AKfycbzq-5XUiRTi0re38PiRV_eAwDGgQKfFaYUaoPs9zMxtEITgqUdkuwvSI43ucdBpCYs3Vw/exec';
+    // ⚠️ ЗАМЕНИТЕ НА ВАШ URL ИЗ APPS SCRIPT
+    const API_URL = 'https://script.google.com/macros/s/ВАШ_АЙДИ/exec';
     
-    // Глобальные данные
     let participants = [];         // [{ id, name, events: [bool, ...] }]
     let todayEventNumber = null;   // номер сегодняшнего мероприятия (1..10)
     
@@ -139,11 +138,11 @@
         return scanText;
     }
     
-    // Загрузка данных с сервера (список участников + текущее мероприятие)
+    // Загрузка данных с сервера (GET с CORS)
     async function loadParticipants() {
         showMessage('Загрузка списка участников...', 'info');
         try {
-            const response = await fetch(API_URL + '?action=data', {
+            const response = await fetch(API_URL, {
                 method: 'GET',
                 mode: 'cors'
             });
@@ -163,7 +162,7 @@
         }
     }
     
-    // Отправка отметки на сервер (без ожидания ответа)
+    // Отправка отметки на сервер (POST через no-cors, ответ не ждём)
     function sendMark(id) {
         fetch(API_URL, {
             method: 'POST',
@@ -175,7 +174,6 @@
     
     // Локальная проверка и отметка
     function processUser(userId) {
-        // Поиск участника
         const participant = participants.find(p => p.id === userId);
         if (!participant) {
             showMessage(`❌ Участник с ID ${userId} не найден в списке`, 'error');

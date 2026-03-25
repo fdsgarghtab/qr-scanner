@@ -131,23 +131,31 @@
     }
     
     async function sendToServer(scannedId) {
-        try {
-            const response = await fetch(API_URL, {
-                method: 'POST',
-                mode: 'no-cors',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ id: scannedId })
-            });
-            
-            // При mode: 'no-cors' мы не можем прочитать ответ,
-            // но запрос уходит. Google Sheets всё равно получит данные.
-            // Это обходной путь для работы без CORS.
-            return { success: true, message: 'Отправлено' };
-        } catch (error) {
-            console.error('Ошибка:', error);
-            return { success: false, message: 'Ошибка связи' };
+    try {
+        const response = await fetch(API_URL, {
+            method: 'POST',
+            mode: 'cors',  // меняем с no-cors на cors
+            headers: { 
+                'Content-Type': 'application/x-www-form-urlencoded'
+            },
+            body: 'id=' + encodeURIComponent(scannedId)
+        });
+        
+        const text = await response.text();
+        console.log('Ответ сервера:', text);
+        
+        if (text.startsWith('success')) {
+            return { success: true, message: text };
+        } else if (text.startsWith('warning')) {
+            return { success: true, message: text, warning: true };
+        } else {
+            return { success: false, message: text };
         }
+    } catch (error) {
+        console.error('Ошибка отправки:', error);
+        return { success: false, message: 'Ошибка связи: ' + error.message };
     }
+}
     
     function onScanSuccess(decodedText) {
         if (!isScanning) return;

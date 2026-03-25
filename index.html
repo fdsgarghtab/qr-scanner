@@ -21,6 +21,8 @@
     <div id="statusBar" class="status-bar">⚡ Ожидание сканирования</div>
 </div>
 
+<iframe id="hiddenFrame" style="display:none;"></iframe>
+
 <script>
     // ⚠️ ЗАМЕНИТЕ НА АКТУАЛЬНЫЙ URL ВАШЕГО ВЕБ-ПРИЛОЖЕНИЯ
     const API_URL = 'https://script.google.com/macros/s/AKfycbzq-5XUiRTi0re38PiRV_eAwDGgQKfFaYUaoPs9zMxtEITgqUdkuwvSI43ucdBpCYs3Vw/exec';
@@ -29,12 +31,14 @@
     let isScanning = false;
     let lastScannedId = null;
     let lastScanTime = 0;
+    let pendingRequestId = null;
     
     const startBtn = document.getElementById('startBtn');
     const stopBtn = document.getElementById('stopBtn');
     const resultDiv = document.getElementById('result');
     const lastScanDiv = document.getElementById('lastScanInfo');
     const statusBar = document.getElementById('statusBar');
+    const hiddenFrame = document.getElementById('hiddenFrame');
     
     function showMessage(text, type) {
         resultDiv.innerHTML = text;
@@ -48,38 +52,70 @@
         return scanText;
     }
     
-    async function sendToServer(scannedId) {
-        try {
-            const response = await fetch(API_URL, {
-                method: 'POST',
-                mode: 'cors',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ id: scannedId })
-            });
-            const text = await response.text();
-            console.log('Ответ сервера:', text);
+    function sendToServer(scannedId) {
+        return new Promise((resolve, reject) => {
+            pendingRequestId = scannedId;
+            // Создаём форму и отправляем через iframe
+            const form = document.createElement('form');
+            form.method = 'POST';
+            form.action = API_URL;
+            form.target = 'hiddenFrame';
+            form.style.display = 'none';
             
-            if (text.startsWith('success')) {
-                return { success: true, message: text };
-            } else if (text.startsWith('warning')) {
-                return { success: false, message: text, warning: true };
-            } else if (text.startsWith('error')) {
-                return { success: false, message: text, error: true };
-            } else {
-                return { success: false, message: text };
+            const input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = 'id';
+            input.value = scannedId;
+            form.appendChild(input);
+            
+            document.body.appendChild(form);
+            form.submit();
+            document.body.removeChild(form);
+            
+            // Устанавливаем таймаут
+            const timeout = setTimeout(() => {
+                window.removeEventListener('message', handleMessage);
+                reject(new Error('Таймаут ответа'));
+            }, 5000);
+            
+            function handleMessage(event) {
+                if (event.data && event.data.id === scannedId) {
+                    clearTimeout(timeout);
+                    window.removeEventListener('message', handleMessage);
+                    resolve(event.data);
+                }
             }
-        } catch (error) {
-            console.error('Ошибка отправки:', error);
-            return { success: false, message: 'Ошибка связи: ' + error.message };
-        }
+            
+            window.addEventListener('message', handleMessage);
+        });
     }
+    
+    // Слушаем загрузку iframe и извлекаем ответ
+    hiddenFrame.onload = function() {
+        try {
+            const iframeDoc = hiddenFrame.contentDocument || hiddenFrame.contentWindow.document;
+            const responseText = iframeDoc.body.innerText || iframeDoc.body.textContent;
+            if (responseText && pendingRequestId) {
+                let type = 'error';
+                let message = responseText;
+                if (responseText.startsWith('success')) type = 'success';
+                else if (responseText.startsWith('warning')) type = 'warning';
+                else if (responseText.startsWith('error')) type = 'error';
+                else type = 'info';
+                
+                window.postMessage({ id: pendingRequestId, type: type, message: message }, '*');
+                pendingRequestId = null;
+            }
+        } catch(e) {
+            console.error('Ошибка чтения iframe', e);
+        }
+    };
     
     function onScanSuccess(decodedText) {
         if (!isScanning) return;
         
         const userId = extractUserId(decodedText);
         
-        // Защита от повторного сканирования того же ID в течение 3 секунд
         const now = Date.now();
         if (userId === lastScannedId && now - lastScanTime < 3000) {
             showMessage(`⚠️ Повторное сканирование ID ${userId} игнорируется`, 'warning');
@@ -91,16 +127,16 @@
         showMessage(`🔍 Обработка ID: ${userId}...`, 'info');
         
         sendToServer(userId).then(response => {
-            if (response.success) {
+            if (response.type === 'success') {
                 showMessage(`✅ ${response.message}`, 'success');
-            } else if (response.warning) {
+            } else if (response.type === 'warning') {
                 showMessage(`⚠️ ${response.message}`, 'warning');
-            } else if (response.error) {
-                showMessage(`❌ ${response.message}`, 'error');
             } else {
                 showMessage(`❌ ${response.message}`, 'error');
             }
             lastScanDiv.innerHTML = `Последний ID: ${userId} в ${new Date().toLocaleTimeString()}`;
+        }).catch(err => {
+            showMessage(`❌ Ошибка связи: ${err.message}`, 'error');
         });
     }
     

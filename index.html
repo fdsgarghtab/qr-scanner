@@ -74,25 +74,14 @@
             border-radius: 12px;
             font-weight: 500;
             text-align: center;
+            background: #e2e8f0;
+            color: #2d3748;
         }
-        .success { background: #c6f6d5; color: #22543d; }
-        .error { background: #fed7d7; color: #742a2a; }
-        .info { background: #e2e8f0; color: #2d3748; }
-        .warning { background: #feebc8; color: #7b341e; }
         .last-scan {
             margin-top: 12px;
             font-size: 12px;
             color: #718096;
             text-align: center;
-        }
-        .status-bar {
-            background: #edf2f7;
-            padding: 8px;
-            border-radius: 12px;
-            margin-bottom: 16px;
-            font-size: 13px;
-            text-align: center;
-            color: #4a5568;
         }
     </style>
 </head>
@@ -103,16 +92,13 @@
     <div id="reader"></div>
     <button id="startBtn" class="btn-primary">▶ Запустить сканер</button>
     <button id="stopBtn" class="btn-stop" style="display: none;">⏹ Остановить</button>
-    <div id="result" class="result info">Готов к работе</div>
+    <div id="result" class="result">Готов к работе</div>
     <div id="lastScanInfo" class="last-scan"></div>
-    <div id="statusBar" class="status-bar">⚡ Ожидание сканирования</div>
 </div>
 
 <script>
     const API_URL = 'https://script.google.com/macros/s/AKfycbzq-5XUiRTi0re38PiRV_eAwDGgQKfFaYUaoPs9zMxtEITgqUdkuwvSI43ucdBpCYs3Vw/exec'; // ЗАМЕНИТЕ
     
-    let participants = [];
-    let todayEventNumber = null;
     let html5QrCode;
     let isScanning = false;
     let lastScannedId = null;
@@ -122,48 +108,18 @@
     const stopBtn = document.getElementById('stopBtn');
     const resultDiv = document.getElementById('result');
     const lastScanDiv = document.getElementById('lastScanInfo');
-    const statusBar = document.getElementById('statusBar');
     
-    function showMessage(text, type) {
+    function showMessage(text) {
         resultDiv.innerHTML = text;
-        resultDiv.className = 'result ' + type;
-        statusBar.innerHTML = type === 'success' ? '✅ ' + text : '⚡ ' + text;
+        setTimeout(() => {
+            if (resultDiv.innerHTML === text) resultDiv.innerHTML = 'Готов к работе';
+        }, 2000);
     }
     
     function extractUserId(scanText) {
         const match = scanText.match(/leader-id\.ru\/users\/(\d+)/);
         if (match) return match[1];
         return scanText;
-    }
-    
-    function loadParticipants() {
-        showMessage('Загрузка списка участников...', 'info');
-        const iframe = document.createElement('iframe');
-        iframe.style.display = 'none';
-        iframe.src = API_URL + '?action=data';
-        document.body.appendChild(iframe);
-        
-        const messageHandler = function(event) {
-            if (event.data && typeof event.data === 'object') {
-                if (event.data.error) {
-                    showMessage(`Ошибка: ${event.data.error}`, 'error');
-                } else {
-                    participants = event.data.participants || [];
-                    todayEventNumber = event.data.todayEventNumber;
-                    showMessage(`Загружено ${participants.length} участников. Сегодня мероприятие №${todayEventNumber || 'нет'}`, 'success');
-                }
-                document.body.removeChild(iframe);
-                window.removeEventListener('message', messageHandler);
-            }
-        };
-        window.addEventListener('message', messageHandler);
-        setTimeout(() => {
-            if (document.body.contains(iframe)) {
-                document.body.removeChild(iframe);
-                window.removeEventListener('message', messageHandler);
-                showMessage('Ошибка загрузки: таймаут', 'error');
-            }
-        }, 10000);
     }
     
     function sendMark(id) {
@@ -175,46 +131,23 @@
         }).catch(e => console.warn('Ошибка отправки:', e));
     }
     
-    function processUser(userId) {
-        const participant = participants.find(p => p.id === userId);
-        if (!participant) {
-            showMessage(`❌ Участник с ID ${userId} не найден в списке`, 'error');
-            return;
-        }
-        if (!todayEventNumber) {
-            showMessage(`⚠️ Сегодня нет мероприятий`, 'warning');
-            return;
-        }
-        const eventIndex = todayEventNumber - 1;
-        if (participant.events[eventIndex]) {
-            showMessage(`⚠️ Участник ${participant.name} уже отмечен на сегодняшнее мероприятие`, 'warning');
-            return;
-        }
-        participant.events[eventIndex] = true;
-        sendMark(userId);
-        showMessage(`✅ ${participant.name} отмечен на мероприятие ${todayEventNumber}`, 'success');
-    }
-    
     function onScanSuccess(decodedText) {
         if (!isScanning) return;
         const userId = extractUserId(decodedText);
         const now = Date.now();
         if (userId === lastScannedId && now - lastScanTime < 3000) {
-            showMessage(`⚠️ Повторное сканирование ID ${userId} игнорируется`, 'warning');
+            showMessage(`⚠️ Повторное сканирование ID ${userId} игнорируется`);
             return;
         }
         lastScannedId = userId;
         lastScanTime = now;
-        processUser(userId);
+        sendMark(userId);
+        showMessage(`✅ Отметка для ID ${userId} отправлена`);
         lastScanDiv.innerHTML = `Последний ID: ${userId} в ${new Date().toLocaleTimeString()}`;
     }
     
     function startScanner() {
         if (isScanning) return;
-        if (!participants.length) {
-            showMessage('Сначала загрузите список участников (нажмите "Загрузить список")', 'error');
-            return;
-        }
         html5QrCode = new Html5Qrcode("reader");
         const config = { fps: 10, qrbox: { width: 250, height: 250 } };
         html5QrCode.start({ facingMode: "environment" }, config, onScanSuccess)
@@ -222,11 +155,11 @@
                 isScanning = true;
                 startBtn.style.display = 'none';
                 stopBtn.style.display = 'inline-block';
-                showMessage('📷 Камера работает. Наведите на QR-код.', 'info');
+                showMessage('📷 Камера работает. Наведите на QR-код.');
             })
             .catch(err => {
                 console.error(err);
-                showMessage('❌ Не удалось запустить камеру. Проверьте разрешения.', 'error');
+                showMessage('❌ Не удалось запустить камеру. Проверьте разрешения.');
                 startBtn.style.display = 'inline-block';
                 stopBtn.style.display = 'none';
             });
@@ -238,26 +171,17 @@
                 isScanning = false;
                 startBtn.style.display = 'inline-block';
                 stopBtn.style.display = 'none';
-                showMessage('⏸ Сканер остановлен', 'info');
+                showMessage('⏸ Сканер остановлен');
             }).catch(err => console.log(err));
         }
     }
-    
-    const loadBtn = document.createElement('button');
-    loadBtn.textContent = '🔄 Загрузить список';
-    loadBtn.className = 'btn-primary';
-    loadBtn.style.marginTop = '5px';
-    loadBtn.onclick = () => loadParticipants();
-    document.querySelector('.container').appendChild(loadBtn);
     
     startBtn.addEventListener('click', startScanner);
     stopBtn.addEventListener('click', stopScanner);
     
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        showMessage('❌ Ваш браузер не поддерживает доступ к камере', 'error');
+        showMessage('❌ Ваш браузер не поддерживает доступ к камере');
     }
-    
-    loadParticipants();
 </script>
 </body>
 </html>

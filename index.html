@@ -112,7 +112,7 @@
 </div>
 
 <script>
-    // ⚠️ ВАЖНО: замените URL на ваш из Apps Script!
+    // ⚠️ ЗАМЕНИТЕ ЭТУ СТРОКУ НА ВАШ URL ИЗ APPS SCRIPT
     const API_URL = 'https://script.google.com/macros/s/AKfycbzq-5XUiRTi0re38PiRV_eAwDGgQKfFaYUaoPs9zMxtEITgqUdkuwvSI43ucdBpCYs3Vw/exec';
     
     let html5QrCode;
@@ -130,35 +130,51 @@
         statusBar.innerHTML = type === 'success' ? '✅ ' + text : '⚡ ' + text;
     }
     
-    async function sendToServer(scannedId) {
-    try {
-        const response = await fetch(API_URL, {
-            method: 'POST',
-            mode: 'cors',  // меняем с no-cors на cors
-            headers: { 
-                'Content-Type': 'application/x-www-form-urlencoded'
-            },
-            body: 'id=' + encodeURIComponent(scannedId)
-        });
-        
-        const text = await response.text();
-        console.log('Ответ сервера:', text);
-        
-        if (text.startsWith('success')) {
-            return { success: true, message: text };
-        } else if (text.startsWith('warning')) {
-            return { success: true, message: text, warning: true };
-        } else {
-            return { success: false, message: text };
+    // Извлекаем числовой ID из ссылки Leader-ID
+    function extractUserId(scanText) {
+        // Проверяем, является ли строка ссылкой на профиль Leader-ID
+        const match = scanText.match(/leader-id\.ru\/users\/(\d+)/);
+        if (match) {
+            return match[1]; // возвращаем только числовой ID
         }
-    } catch (error) {
-        console.error('Ошибка отправки:', error);
-        return { success: false, message: 'Ошибка связи: ' + error.message };
+        // Если это просто число (или уже ID), возвращаем как есть
+        return scanText;
     }
-}
+    
+    async function sendToServer(scannedId) {
+        try {
+            const response = await fetch(API_URL, {
+                method: 'POST',
+                mode: 'cors',
+                headers: { 
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ id: scannedId })
+            });
+            
+            const text = await response.text();
+            console.log('Ответ сервера:', text);
+            
+            if (text.startsWith('success')) {
+                return { success: true, message: text };
+            } else if (text.startsWith('warning')) {
+                return { success: true, message: text, warning: true };
+            } else if (text.startsWith('error')) {
+                return { success: false, message: text };
+            } else {
+                return { success: false, message: text };
+            }
+        } catch (error) {
+            console.error('Ошибка отправки:', error);
+            return { success: false, message: 'Ошибка связи: ' + error.message };
+        }
+    }
     
     function onScanSuccess(decodedText) {
         if (!isScanning) return;
+        
+        // Извлекаем ID из отсканированной строки
+        const userId = extractUserId(decodedText);
         
         if (html5QrCode) {
             html5QrCode.stop().then(() => {
@@ -168,14 +184,14 @@
             }).catch(err => console.log(err));
         }
         
-        showMessage(`🔍 Обработка ID: ${decodedText}...`, 'info');
+        showMessage(`🔍 Обработка ID: ${userId}...`, 'info');
         
-        sendToServer(decodedText).then(response => {
+        sendToServer(userId).then(response => {
             if (response.success) {
-                showMessage(`✅ Участник отмечен! (ID: ${decodedText})`, 'success');
-                lastScanDiv.innerHTML = `Последний ID: ${decodedText} в ${new Date().toLocaleTimeString()}`;
+                showMessage(response.message, response.warning ? 'warning' : 'success');
+                lastScanDiv.innerHTML = `Последний ID: ${userId} в ${new Date().toLocaleTimeString()}`;
             } else {
-                showMessage(`❌ Ошибка: ${response.message}`, 'error');
+                showMessage(`❌ ${response.message}`, 'error');
             }
             
             setTimeout(() => {

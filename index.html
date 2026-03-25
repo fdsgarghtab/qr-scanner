@@ -109,12 +109,10 @@
 </div>
 
 <script>
-    // ⚠️ ЗАМЕНИТЕ НА ВАШ URL ИЗ APPS SCRIPT
-    const API_URL = 'https://script.google.com/macros/s/AKfycbzq-5XUiRTi0re38PiRV_eAwDGgQKfFaYUaoPs9zMxtEITgqUdkuwvSI43ucdBpCYs3Vw/exec';
+    const API_URL = 'https://script.google.com/macros/s/AKfycbzq-5XUiRTi0re38PiRV_eAwDGgQKfFaYUaoPs9zMxtEITgqUdkuwvSI43ucdBpCYs3Vw/exec'; // ЗАМЕНИТЕ
     
-    let participants = [];         // [{ id, name, events: [bool, ...] }]
-    let todayEventNumber = null;   // номер сегодняшнего мероприятия (1..10)
-    
+    let participants = [];
+    let todayEventNumber = null;
     let html5QrCode;
     let isScanning = false;
     let lastScannedId = null;
@@ -138,72 +136,68 @@
         return scanText;
     }
     
-    // Загрузка данных с сервера (GET с CORS)
-    async function loadParticipants() {
+    function loadParticipants() {
         showMessage('Загрузка списка участников...', 'info');
-        try {
-            const response = await fetch(API_URL, {
-                method: 'GET',
-                mode: 'cors'
-            });
-            const data = await response.json();
-            if (data.error) {
-                showMessage(`Ошибка загрузки: ${data.error}`, 'error');
-                return false;
+        const iframe = document.createElement('iframe');
+        iframe.style.display = 'none';
+        iframe.src = API_URL + '?action=data';
+        document.body.appendChild(iframe);
+        
+        const listener = function(event) {
+            if (event.data && typeof event.data === 'object') {
+                if (event.data.error) {
+                    showMessage(`Ошибка: ${event.data.error}`, 'error');
+                } else {
+                    participants = event.data.participants || [];
+                    todayEventNumber = event.data.todayEventNumber;
+                    showMessage(`Загружено ${participants.length} участников. Сегодня мероприятие №${todayEventNumber || 'нет'}`, 'success');
+                }
+                document.body.removeChild(iframe);
+                window.removeEventListener('message', listener);
             }
-            participants = data.participants || [];
-            todayEventNumber = data.todayEventNumber;
-            showMessage(`Загружено ${participants.length} участников. Сегодня мероприятие №${todayEventNumber || 'нет'}`, 'success');
-            return true;
-        } catch (err) {
-            console.error(err);
-            showMessage(`Ошибка загрузки данных: ${err.message}`, 'error');
-            return false;
-        }
+        };
+        window.addEventListener('message', listener);
+        setTimeout(() => {
+            if (document.body.contains(iframe)) {
+                document.body.removeChild(iframe);
+                window.removeEventListener('message', listener);
+                showMessage('Ошибка загрузки: таймаут', 'error');
+            }
+        }, 10000);
     }
     
-    // Отправка отметки на сервер (POST через no-cors, ответ не ждём)
     function sendMark(id) {
         fetch(API_URL, {
             method: 'POST',
             mode: 'no-cors',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ id: id })
-        }).catch(e => console.warn('Ошибка отправки (не влияет):', e));
+        }).catch(e => console.warn('Ошибка отправки:', e));
     }
     
-    // Локальная проверка и отметка
     function processUser(userId) {
         const participant = participants.find(p => p.id === userId);
         if (!participant) {
             showMessage(`❌ Участник с ID ${userId} не найден в списке`, 'error');
-            return false;
+            return;
         }
-        
         if (!todayEventNumber) {
             showMessage(`⚠️ Сегодня нет мероприятий`, 'warning');
-            return false;
+            return;
         }
-        
-        const eventIndex = todayEventNumber - 1; // 0-индекс
+        const eventIndex = todayEventNumber - 1;
         if (participant.events[eventIndex]) {
             showMessage(`⚠️ Участник ${participant.name} уже отмечен на сегодняшнее мероприятие`, 'warning');
-            return false;
+            return;
         }
-        
-        // Отмечаем локально
         participant.events[eventIndex] = true;
-        // Отправляем запрос на сервер (не ждём ответа)
         sendMark(userId);
         showMessage(`✅ ${participant.name} отмечен на мероприятие ${todayEventNumber}`, 'success');
-        return true;
     }
     
     function onScanSuccess(decodedText) {
         if (!isScanning) return;
-        
         const userId = extractUserId(decodedText);
-        
         const now = Date.now();
         if (userId === lastScannedId && now - lastScanTime < 3000) {
             showMessage(`⚠️ Повторное сканирование ID ${userId} игнорируется`, 'warning');
@@ -211,22 +205,18 @@
         }
         lastScannedId = userId;
         lastScanTime = now;
-        
         processUser(userId);
         lastScanDiv.innerHTML = `Последний ID: ${userId} в ${new Date().toLocaleTimeString()}`;
     }
     
     function startScanner() {
         if (isScanning) return;
-        
         if (!participants.length) {
             showMessage('Сначала загрузите список участников (нажмите "Загрузить список")', 'error');
             return;
         }
-        
         html5QrCode = new Html5Qrcode("reader");
         const config = { fps: 10, qrbox: { width: 250, height: 250 } };
-        
         html5QrCode.start({ facingMode: "environment" }, config, onScanSuccess)
             .then(() => {
                 isScanning = true;
@@ -253,17 +243,11 @@
         }
     }
     
-    // Добавим кнопку для ручной загрузки данных (на случай, если нужно обновить список)
     const loadBtn = document.createElement('button');
     loadBtn.textContent = '🔄 Загрузить список';
     loadBtn.className = 'btn-primary';
     loadBtn.style.marginTop = '5px';
-    loadBtn.onclick = async () => {
-        await loadParticipants();
-        if (participants.length > 0 && !isScanning) {
-            showMessage('Список загружен. Можете начинать сканирование.', 'success');
-        }
-    };
+    loadBtn.onclick = () => loadParticipants();
     document.querySelector('.container').appendChild(loadBtn);
     
     startBtn.addEventListener('click', startScanner);
@@ -273,7 +257,6 @@
         showMessage('❌ Ваш браузер не поддерживает доступ к камере', 'error');
     }
     
-    // Автоматическая загрузка списка при старте
     loadParticipants();
 </script>
 </body>

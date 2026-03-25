@@ -109,7 +109,7 @@
 </div>
 
 <script>
-    const API_URL = 'https://script.google.com/macros/s/AKfycbzq-5XUiRTi0re38PiRV_eAwDGgQKfFaYUaoPs9zMxtEITgqUdkuwvSI43ucdBpCYs3Vw/exec'; // ЗАМЕНИТЕ
+    const API_URL = 'https://script.google.com/macros/s/AKfycbzq-5XUiRTi0re38PiRV_eAwDGgQKfFaYUaoPs9zMxtEITgqUdkuwvSI43ucdBpCYs3Vw/exec'; // ЗАМЕНИТЕ НА ВАШ URL
     
     let participants = [];
     let todayEventNumber = null;
@@ -136,34 +136,28 @@
         return scanText;
     }
     
-    function loadParticipants() {
+    async function loadParticipants() {
         showMessage('Загрузка списка участников...', 'info');
-        const iframe = document.createElement('iframe');
-        iframe.style.display = 'none';
-        iframe.src = API_URL + '?action=data';
-        document.body.appendChild(iframe);
-        
-        const listener = function(event) {
-            if (event.data && typeof event.data === 'object') {
-                if (event.data.error) {
-                    showMessage(`Ошибка: ${event.data.error}`, 'error');
-                } else {
-                    participants = event.data.participants || [];
-                    todayEventNumber = event.data.todayEventNumber;
-                    showMessage(`Загружено ${participants.length} участников. Сегодня мероприятие №${todayEventNumber || 'нет'}`, 'success');
-                }
-                document.body.removeChild(iframe);
-                window.removeEventListener('message', listener);
+        try {
+            const response = await fetch(API_URL, {
+                method: 'GET',
+                mode: 'cors'
+            });
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const data = await response.json();
+            if (data.error) {
+                showMessage(`Ошибка: ${data.error}`, 'error');
+                return false;
             }
-        };
-        window.addEventListener('message', listener);
-        setTimeout(() => {
-            if (document.body.contains(iframe)) {
-                document.body.removeChild(iframe);
-                window.removeEventListener('message', listener);
-                showMessage('Ошибка загрузки: таймаут', 'error');
-            }
-        }, 10000);
+            participants = data.participants || [];
+            todayEventNumber = data.todayEventNumber;
+            showMessage(`Загружено ${participants.length} участников. Сегодня мероприятие №${todayEventNumber || 'нет'}`, 'success');
+            return true;
+        } catch (err) {
+            console.error(err);
+            showMessage(`Ошибка загрузки: ${err.message}`, 'error');
+            return false;
+        }
     }
     
     function sendMark(id) {

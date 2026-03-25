@@ -155,33 +155,32 @@
     }
     
     function onScanSuccess(decodedText) {
-        if (!isScanning) return;
-        
-        const userId = extractUserId(decodedText);
-        
-        if (html5QrCode) {
-            html5QrCode.stop().then(() => {
-                isScanning = false;
-                startBtn.style.display = 'inline-block';
-                stopBtn.style.display = 'none';
-            }).catch(err => console.log(err));
+    if (!isScanning) return;
+    
+    const userId = extractUserId(decodedText);
+    
+    if (html5QrCode) {
+        html5QrCode.stop().then(() => {
+            isScanning = false;
+            startBtn.style.display = 'inline-block';
+            stopBtn.style.display = 'none';
+        }).catch(err => console.log(err));
+    }
+    
+    showMessage(`🔍 Обработка ID: ${userId}...`, 'info');
+    
+    sendToServer(userId).then(response => {
+        if (response.success) {
+            showMessage(response.message, response.warning ? 'warning' : 'success');
+            lastScanDiv.innerHTML = `Последний ID: ${userId} в ${new Date().toLocaleTimeString()}`;
+        } else {
+            showMessage(`❌ ${response.message}`, 'error');
         }
         
-        showMessage(`🔍 Обработка ID: ${userId}...`, 'info');
-        
-        sendToServer(userId).then(response => {
-            if (response.success) {
-                showMessage(`✅ Отметка для ID ${userId} отправлена`, 'success');
-                lastScanDiv.innerHTML = `Последний ID: ${userId} в ${new Date().toLocaleTimeString()}`;
-            } else {
-                showMessage(`❌ ${response.message}`, 'error');
-            }
-            
-            setTimeout(() => {
-                if (!isScanning) startScanner();
-            }, 2000);
-        });
-    }
+        // Перезапускаем сканер сразу, без задержки
+        if (!isScanning) startScanner();
+    });
+}
     
     function startScanner() {
         if (isScanning) return;

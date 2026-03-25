@@ -6,7 +6,7 @@
     <title>Сканер участников</title>
     <script src="https://cdn.jsdelivr.net/npm/html5-qrcode/minified/html5-qrcode.min.js"></script>
     <style>
-        /* ... (стили оставьте те же, что были) ... */
+        /* Ваши стили (оставьте как есть) */
     </style>
 </head>
 <body>
@@ -22,8 +22,8 @@
 </div>
 
 <script>
-    // ⚠️ ЗАМЕНИТЕ НА ВАШ URL ИЗ APPS SCRIPT
-    const API_URL = 'https://script.google.com/macros/s/AKfycbzq-5XUiRTi0re38PiRV_eAwDGgQKfFaYUaoPs9zMxtEITgqUdkuwvSI43ucdBpCYs3Vw/exec';
+    // ⚠️ ЗАМЕНИТЕ НА АКТУАЛЬНЫЙ URL ВАШЕГО ВЕБ-ПРИЛОЖЕНИЯ
+    const API_URL = 'https://script.google.com/macros/s/ВАШ_АЙДИ/exec';
     
     let html5QrCode;
     let isScanning = false;
@@ -50,13 +50,24 @@
     
     async function sendToServer(scannedId) {
         try {
-            await fetch(API_URL, {
+            const response = await fetch(API_URL, {
                 method: 'POST',
-                mode: 'no-cors',
+                mode: 'cors',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ id: scannedId })
             });
-            return { success: true, message: 'Запрос отправлен' };
+            const text = await response.text();
+            console.log('Ответ сервера:', text);
+            
+            if (text.startsWith('success')) {
+                return { success: true, message: text };
+            } else if (text.startsWith('warning')) {
+                return { success: false, message: text, warning: true };
+            } else if (text.startsWith('error')) {
+                return { success: false, message: text, error: true };
+            } else {
+                return { success: false, message: text };
+            }
         } catch (error) {
             console.error('Ошибка отправки:', error);
             return { success: false, message: 'Ошибка связи: ' + error.message };
@@ -81,11 +92,15 @@
         
         sendToServer(userId).then(response => {
             if (response.success) {
-                showMessage(`✅ Отметка для ID ${userId} отправлена`, 'success');
-                lastScanDiv.innerHTML = `Последний ID: ${userId} в ${new Date().toLocaleTimeString()}`;
+                showMessage(`✅ ${response.message}`, 'success');
+            } else if (response.warning) {
+                showMessage(`⚠️ ${response.message}`, 'warning');
+            } else if (response.error) {
+                showMessage(`❌ ${response.message}`, 'error');
             } else {
                 showMessage(`❌ ${response.message}`, 'error');
             }
+            lastScanDiv.innerHTML = `Последний ID: ${userId} в ${new Date().toLocaleTimeString()}`;
         });
     }
     

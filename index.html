@@ -104,7 +104,7 @@
     let isScanning = false;
     let lastScannedId = null;
     let lastScanTime = 0;
-    let isProcessing = false; // блокировка обработки на время паузы
+    let isProcessing = false;
     
     const startBtn = document.getElementById('startBtn');
     const stopBtn = document.getElementById('stopBtn');
@@ -118,7 +118,6 @@
         resultDiv.innerHTML = text;
         resultDiv.style.background = isError ? '#fed7d7' : '#e2e8f0';
         resultDiv.style.color = isError ? '#742a2a' : '#2d3748';
-        // Автоматически сбросить сообщение через 2 секунды, если не было нового
         messageTimeout = setTimeout(() => {
             if (resultDiv.innerHTML === text) {
                 resultDiv.innerHTML = 'Готов к работе';
@@ -131,7 +130,7 @@
     function extractUserId(scanText) {
         const match = scanText.match(/leader-id\.ru\/users\/(\d+)/);
         if (match) return match[1];
-        return scanText;
+        return null; // невалидный QR-код
     }
     
     function sendMark(id) {
@@ -144,9 +143,21 @@
     }
     
     function onScanSuccess(decodedText) {
-        if (!isScanning || isProcessing) return; // если пауза – игнорируем
+        if (!isScanning || isProcessing) return;
         
         const userId = extractUserId(decodedText);
+        
+        // Проверка, является ли QR-код корректным (ссылка на Leader-ID)
+        if (userId === null) {
+            showMessage(`❌ Неверный QR-код. Отсканируйте QR из профиля Leader-ID.`, true);
+            // Блокируем обработку на 1 секунду, чтобы не спамить
+            isProcessing = true;
+            setTimeout(() => {
+                isProcessing = false;
+            }, 1000);
+            return;
+        }
+        
         const now = Date.now();
         if (userId === lastScannedId && now - lastScanTime < 3000) {
             showMessage(`⚠️ Повторное сканирование ID ${userId} игнорируется`, true);
@@ -155,15 +166,11 @@
         
         lastScannedId = userId;
         lastScanTime = now;
-        
-        // Включаем блокировку на 1 секунду
         isProcessing = true;
         showMessage(`✅ Отметка для ID ${userId} отправлена`, false);
         lastScanDiv.innerHTML = `Последний ID: ${userId} в ${new Date().toLocaleTimeString()}`;
-        
         sendMark(userId);
         
-        // Через 1 секунду снимаем блокировку
         setTimeout(() => {
             isProcessing = false;
         }, 1000);
